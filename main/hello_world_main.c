@@ -12,13 +12,13 @@
 
 #define AW9523_ADDR 0x58
 #define SHT30_ADDR 0x44
+#define QMP6988_ADDR 0x70
 
 uint8_t crc_check(uint8_t part1, uint8_t part2)
 {
     uint8_t crc = 0xFF;
 
     crc ^= part1;
-   
 
     for (size_t i = 0; i < 8; i++)
     {
@@ -34,7 +34,7 @@ uint8_t crc_check(uint8_t part1, uint8_t part2)
     }
 
     crc ^= part2;
-    
+
     for (size_t i = 0; i < 8; i++)
     {
         if (crc & 0x80)
@@ -281,12 +281,72 @@ void app_main(void)
         humidity_crc,
         data_rd[5]);
 
+    // 9. Alleen probe van SHT30
+    // =========================================
+
+    result =
+        i2c_master_probe(
+            port_bus,
+            QMP6988_ADDR,
+            1000);
+
+    printf(
+        "QMP6988 probe: %s\n",
+        esp_err_to_name(result));
+
+    // =========================================
+    // 10. SHT30 als I2C-device toevoegen
+    // =========================================
+
+    i2c_device_config_t qmp6988_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = 0x70,
+        .scl_speed_hz = 100000,
+    };
+
+    i2c_master_dev_handle_t qmp6988_handle;
+
+    result = i2c_master_bus_add_device(
+        port_bus,
+        &qmp6988_cfg,
+        &qmp6988_handle);
+
+    printf(
+        "QMP6988 device: %s\n",
+        esp_err_to_name(result));
+
+    // ========================================
+    // 11. de 25 correctiecoëfficiënten van de QMP6988 uitlezen
+    // =========================================
+
+    uint8_t data_qm[25];
+
+    uint8_t data_QM2[] = {0xA0};
+
+    result = i2c_master_transmit_receive(
+        qmp6988_handle,
+        data_QM2,
+        sizeof(data_QM2),
+        data_qm,
+        sizeof(data_qm),
+        1000);
+
+    printf(
+        "QMP6988 calibration read: %s\n",
+        esp_err_to_name(result));
+
+        for (int i = 0; i < 25; i++)
+        {
+            printf("QMP6988 A%d: 0x%02X\n", i, data_qm[i]);
+        }
+        
     // =========================================
     // x. Opruimen
     // =========================================
 
     i2c_master_bus_rm_device(aw_dev);
     i2c_master_bus_rm_device(sht30_handle);
+    i2c_master_bus_rm_device(qmp6988_handle);
 
     i2c_del_master_bus(port_bus);
     i2c_del_master_bus(sys_bus);

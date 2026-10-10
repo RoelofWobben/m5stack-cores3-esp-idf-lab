@@ -4,7 +4,18 @@
 #include "esp_wifi.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
+#include <sys/socket.h>
 #include "esp_wifi_default.h"
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+#include <errno.h>
+
+static bool tcp_task_started = false;
+static const char *server_ip = "192.168.178.21";
 
 const char *reason_to_text(int reason)
 {
@@ -23,6 +34,8 @@ const char *reason_to_text(int reason)
         return "onbekende reden";
     }
 }
+
+void tcp_client_task(void *pvParameters);
 
 void wifi_event_handler(
     void *event_handler_arg,
@@ -58,9 +71,10 @@ void wifi_event_handler(
                reason_to_text(((wifi_event_sta_disconnected_t *)event_data)->reason));
     }
 
-    if (event_id == IP_EVENT_STA_GOT_IP ) {
+    if (event_id == IP_EVENT_STA_GOT_IP)
+    {
 
-         printf("in IP if\n");
+        printf("in IP if\n");
 
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
 
@@ -68,7 +82,101 @@ void wifi_event_handler(
 
         printf("IP adres: " IPSTR "\n", IP2STR(&event->ip_info.ip));
 
+        if (!tcp_task_started)
+        {
+            BaseType_t result = xTaskCreate(
+                tcp_client_task,
+                "tcp_client",
+                4096,
+                NULL,
+                5,
+                NULL);
+
+            if (result == pdPASS)
+            {
+                tcp_task_started = true;
+                printf("TCP-task aangemaakt\n");
+            }
+            else
+            {
+                printf("TCP-task aanmaken mislukt\n");
+            }
+        }
     }
+}
+
+void tcp_client_task(void *pvParameters)
+{
+    printf("TCP-task gestart\n");
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (sock < 0)
+    {
+        printf("Socket aanmaken mislukt\n");
+        vTaskDelete(NULL);
+    }
+
+    struct sockaddr_in server_addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(5000),
+    };
+
+    int result_ip = inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+
+    printf("result_ip = %d\n", result_ip);
+
+    if (result_ip <= 0)
+    {
+        printf("Het IP-adres kon niet worden omgezet\n");
+        close(sock);
+        return;
+    }
+
+    int result_connect = connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+    if (result_connect < 0)
+    {
+        printf("Verbinding maken met de server mislukt\n");
+        printf("errno = %d\n", errno);
+        close(sock);
+        vTaskDelete(NULL);
+    }
+
+    printf("Verbinding met de server gelukt\n");
+
+    const char *message = "Hallo, desktop van de M5!";
+    ssize_t bytes_sent = send(sock, message, strlen(message), 0);
+
+    if (bytes_sent == -1)
+    {
+        printf("Versturen van het bericht mislukt\n");
+    }
+
+    if (bytes_sent != strlen(message))
+    {
+        printf("Niet alle bytes zijn verstuurd\n");
+    }
+
+    // ontvangen van een bericht van de server
+
+    char buff[100];
+    ssize_t result_ontvangen = recv(sock, buff, 99, 0);
+
+    if (result_ontvangen > 0)
+    {
+        buff[result_ontvangen] = '\0';
+        printf("Ontvangen boodschap: %s\n", buff);
+    }
+    else if (result_ontvangen == 0)
+    {
+        printf("De peer heeft de TCP-verbinding gesloten.\n");
+    }
+    else
+    {
+        perror("recv mislukt");
+    }
+
+    vTaskDelete(NULL);
 }
 
 void app_main(void)
@@ -177,7 +285,7 @@ void app_main(void)
         wifi_event_handler,
         NULL);
 
-     result_handler = esp_event_handler_register(
+    result_handler = esp_event_handler_register(
         IP_EVENT,
         IP_EVENT_STA_GOT_IP,
         wifi_event_handler,

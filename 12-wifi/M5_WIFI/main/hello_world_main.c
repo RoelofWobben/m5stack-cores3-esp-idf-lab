@@ -66,6 +66,7 @@ void wifi_event_handler(
 
     if (event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
+            printf("Disconnect reason code: %d\n", ((wifi_event_sta_disconnected_t *)event_data)->reason);
 
         printf("Verbinding verbroken: %s\n",
                reason_to_text(((wifi_event_sta_disconnected_t *)event_data)->reason));
@@ -103,6 +104,60 @@ void wifi_event_handler(
             }
         }
     }
+}
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+bool controleer_invoer(char *input, float *waarde)
+{
+    char *pos_delimiter = strchr(input, ':');
+
+    if (pos_delimiter == NULL)
+    {
+        return false;
+    }
+
+    if ((pos_delimiter - input) != 4)
+    {
+        return false;
+    }
+
+    char part1[5];
+    strncpy(part1, input, 4);
+    part1[4] = '\0';
+
+    if (strcmp("TEMP", part1) != 0)
+    {
+        return false;
+    }
+
+    size_t lengte = strlen(pos_delimiter + 1);
+    printf("Lengte van temperatuurtekst: %zu\n", lengte);
+    printf("Waarde na dubbele punt: '%s'\n", pos_delimiter + 1);
+
+    if (lengte == 0 || lengte > 4)
+    {
+        return false;
+    }
+
+    char part2[5];
+    strncpy(part2, pos_delimiter + 1, lengte);
+    part2[lengte] = '\0';
+
+    char *endptr;
+    float resultaat = strtof(part2, &endptr);
+
+    if (endptr == part2 || *endptr != '\0')
+    {
+        return false;
+    }
+
+    *waarde = resultaat;
+
+    return true;
 }
 
 void tcp_client_task(void *pvParameters)
@@ -166,6 +221,18 @@ void tcp_client_task(void *pvParameters)
     {
         buff[result_ontvangen] = '\0';
         printf("Ontvangen boodschap: %s\n", buff);
+
+        float temperatuur;
+        buff[strcspn(buff, "\n")] = '\0';
+
+        if (controleer_invoer(buff, &temperatuur))
+        {
+            printf("Temperatuur: %.2f\n", temperatuur);
+        }
+        else
+        {
+            printf("Illegale invoer\n");
+        }
     }
     else if (result_ontvangen == 0)
     {
@@ -173,7 +240,7 @@ void tcp_client_task(void *pvParameters)
     }
     else
     {
-        perror("recv mislukt");
+        printf("recv mislukt, errno = %d\n", errno);
     }
 
     vTaskDelete(NULL);
@@ -223,7 +290,7 @@ void app_main(void)
 
     wifi_config_t wifi_config = {};
 
-    const char *ssid = "Ziggo1056914";
+    const char *ssid = "assortimens";
 
     if (strlen(ssid) > sizeof(wifi_config.sta.ssid))
     {
@@ -233,7 +300,7 @@ void app_main(void)
 
     memcpy(wifi_config.sta.ssid, ssid, strlen(ssid));
 
-    const char *password = "nf9Trqzhfmft";
+    const char *password = "t3mpp4ssw0rd";
 
     if (strlen(password) > sizeof(wifi_config.sta.password))
     {

@@ -3,6 +3,7 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "esp_err.h"
+#include "mqtt.h"
 
 #include <string.h>
 
@@ -57,6 +58,8 @@ void wifi_event_handler(
 
         printf("Verbinding verbroken: %s\n",
                reason_to_text(((wifi_event_sta_disconnected_t *)event_data)->reason));
+
+        esp_wifi_connect();
     }
 
     if (event_id == IP_EVENT_STA_GOT_IP)
@@ -69,6 +72,8 @@ void wifi_event_handler(
         printf("cast gelukt\n");
 
         printf("IP adres: " IPSTR "\n", IP2STR(&event->ip_info.ip));
+
+            mqtt_init();
     }
 }
 
@@ -130,7 +135,7 @@ void wifi_init(void)
 
     wifi_config_t wifi_config = {};
 
-    const char *ssid = "Ziggo1056914";
+    const char *ssid = "assortimens";
 
     if (strlen(ssid) > sizeof(wifi_config.sta.ssid))
     {
@@ -140,7 +145,7 @@ void wifi_init(void)
 
     memcpy(wifi_config.sta.ssid, ssid, strlen(ssid));
 
-    const char *password = "nf9Trqzhfmft";
+    const char *password = "t3mpp4ssw0rd";
 
     if (strlen(password) > sizeof(wifi_config.sta.password))
     {
@@ -195,7 +200,7 @@ void wifi_init(void)
     if (result_handler != ESP_OK)
     {
         printf("Registreren van STA_START handler mislukt: %s\n", esp_err_to_name(result_handler));
-        return; 
+        return;
     }
 
     result_handler = esp_event_handler_register(

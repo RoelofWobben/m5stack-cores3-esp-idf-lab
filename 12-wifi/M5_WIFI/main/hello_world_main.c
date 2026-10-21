@@ -15,7 +15,7 @@
 #include <errno.h>
 
 static bool tcp_task_started = false;
-static const char *server_ip = "192.168.178.21";
+static const char *server_ip = "172.16.1.102";
 
 const char *reason_to_text(int reason)
 {
@@ -29,6 +29,9 @@ const char *reason_to_text(int reason)
 
     case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
         return "4-way handshake timeout";
+
+    case WIFI_REASON_ASSOC_FAIL:
+        return "associatie mislukt";
 
     default:
         return "onbekende reden";
@@ -66,10 +69,12 @@ void wifi_event_handler(
 
     if (event_id == WIFI_EVENT_STA_DISCONNECTED)
     {
-            printf("Disconnect reason code: %d\n", ((wifi_event_sta_disconnected_t *)event_data)->reason);
+        printf("Disconnect reason code: %d\n", ((wifi_event_sta_disconnected_t *)event_data)->reason);
 
         printf("Verbinding verbroken: %s\n",
                reason_to_text(((wifi_event_sta_disconnected_t *)event_data)->reason));
+
+        esp_wifi_connect();
     }
 
     if (event_id == IP_EVENT_STA_GOT_IP)
@@ -105,11 +110,6 @@ void wifi_event_handler(
         }
     }
 }
-
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdbool.h>
 
 bool controleer_invoer(char *input, float *waarde)
 {
@@ -351,6 +351,13 @@ void app_main(void)
         WIFI_EVENT_STA_START,
         wifi_event_handler,
         NULL);
+
+    if (result_handler != ESP_OK)
+    {
+        printf("Registreren van STA_START handler mislukt: %s\n",
+               esp_err_to_name(result_handler));
+        return;
+    }
 
     result_handler = esp_event_handler_register(
         IP_EVENT,
